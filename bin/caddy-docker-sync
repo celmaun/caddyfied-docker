@@ -29,6 +29,22 @@ sed_inplace() {
   esac
 }
 
+get_container_label() {
+  container_name="$1"
+  : "${container_name:?}"
+  label_name="$2"
+  : "${label_name:?}"
+
+  label="$(docker inspect --format '{{index .Config.Labels "'"$label_name"'"}}' "$container_name")"
+  labels_file="conf/docker.labels.json"
+
+  if [ -z "$label" ] && [ -f "$labels_file" ]; then
+    label="$(jq 2>/dev/null -er ".${container_name}[\"${label_name}\"]" "$labels_file")" || label=
+  fi
+
+  printf %s "$label"
+}
+
 set +a
 
 # On macOS, trust Caddy's root CA:
@@ -52,10 +68,10 @@ done
 
 for container_name in $container_names; do
 
-  domain="$(orex docker inspect --format '{{index .Config.Labels "com.celmaun.domain"}}' "$container_name")"
-  http_port="$(orex docker inspect --format '{{index .Config.Labels "com.celmaun.http-port"}}' "$container_name")"
-  cloudflare="$(orex docker inspect --format '{{index .Config.Labels "com.celmaun.cloudflare-api-token"}}' "$container_name")"
-  caddyfile="$(orex docker inspect --format '{{index .Config.Labels "com.celmaun.caddyfile"}}' "$container_name")"
+  domain="$(get_container_label "$container_name" "com.celmaun.domain")"
+  http_port="$(get_container_label "$container_name" "com.celmaun.http-port")"
+  cloudflare="$(get_container_label "$container_name" "com.celmaun.cloudflare-api-token")"
+  caddyfile="$(get_container_label "$container_name" "com.celmaun.caddyfile")"
 
   if [ -n "$caddyfile" ]; then
     orex docker cp "$container_name:$caddyfile" "./conf/sites-available/$container_name"

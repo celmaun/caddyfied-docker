@@ -4,3 +4,4 @@ conf/sites-available/*
 !conf/sites-available/.gitkeep
 conf/sites-enabled/*
 !conf/sites-enabled/.gitkeep
+conf/docker.labels.json

@@ -1,0 +1,11 @@
+{
+    "some_example_container": {
+        "com.celmaun.domain": "example.com",
+        "com.celmaun.http-port": "8080",
+        "com.celmaun.cloudflare-api-token": "*secret*"
+    },
+
+    "another_example_container": {
+        "com.celmaun.caddyfile": "/etc/Caddyfile"
+    }
+}
