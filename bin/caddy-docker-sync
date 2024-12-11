@@ -1,0 +1,87 @@
+#!/usr/bin/env bash
+# vim:set ft=bash ts=4 sw=4 et :
+# shellcheck shell=bash
+# shellcheck disable=SC2317
+
+set -a
+
+orex() { "$@" || exit "$?$(printf >&2 '^ ERROR[%d]: %s\n' "$?" "$*")"; }
+oret() { "$@" || return "$?$(printf >&2 '^ ERROR[%d]: %s\n' "$?" "$*")"; }
+orinfo() { "$@" || return "$?$(printf >&2 '^ INFO[%d]: %s\n' "$?" "$*")"; }
+oklog() {
+  oret "$@" || return
+  printf >&2 'LOG: %s\n' "$*"
+}
+canon_file() { [ -n "$1" ] && [ -f "$1" ] && readlink -f -- "$1"; }
+canon_file_dir() { [ -n "$1" ] && [ -f "$1" ] && f="$(readlink -f -- "$1")" && printf '%s\n' "${f%/*}"; }
+canon_dir() { [ -n "$1" ] && [ -d "$1" ] && readlink -f -- "$1"; }
+canon_exe() { [ -n "$1" ] && [ -f "$1" ] && [ -x "$1" ] && readlink -f -- "$1"; }
+canon_zarg() { z="$(canon_file "${BASH_SOURCE:-"$0"}")" && case ${z##*/} in '' | '-'* | ??sh | ?sh | sh) false ;; esac && printf '%s\n' "$z"; }
+canon_zdir() {
+  p="$(canon_zarg)" && printf '%s\n' "${p%/*}" && return
+  pwd -P
+}
+
+sed_inplace() {
+  case $(sed --help 2>&1) in
+  *GNU*) sed -i "$@" || return ;;
+  *) sed -i '' "$@" || return ;;
+  esac
+}
+
+set +a
+
+# On macOS, trust Caddy's root CA:
+# docker compose up
+# brew install caddy
+# caddy trust
+
+# orex docker network create caddy
+
+orex cd "$(dirname "$(canon_zdir)")"
+
+export PATH="$PWD/bin:$PATH"
+
+orex docker network inspect caddy --format='LOG: "caddy" network exists' && echo
+
+container_names="$(orex docker ps --format '{{.Names}}')"
+
+for container_name in $container_names; do
+  oklog docker network connect --alias "$container_name" caddy "$container_name"
+done
+
+for container_name in $container_names; do
+
+  domain="$(orex docker inspect --format '{{index .Config.Labels "com.celmaun.domain"}}' "$container_name")"
+  http_port="$(orex docker inspect --format '{{index .Config.Labels "com.celmaun.http-port"}}' "$container_name")"
+  cloudflare="$(orex docker inspect --format '{{index .Config.Labels "com.celmaun.cloudflare-api-token"}}' "$container_name")"
+  caddyfile="$(orex docker inspect --format '{{index .Config.Labels "com.celmaun.caddyfile"}}' "$container_name")"
+
+  if [ -n "$caddyfile" ]; then
+    orex docker cp "$container_name:$caddyfile" "./conf/sites-available/$container_name"
+  elif [ -n "$http_port" ]; then
+    domain="${domain:-"${container_name}.localhost"}"
+    host_url="https://${domain}"
+    proxy_url="http://${container_name}:$http_port"
+    tls=""
+
+    if [ -n "$cloudflare" ]; then
+      tls="tls { cloudflare_api_token ${cloudflare} }"
+    fi
+
+    cat <<EOF >"./conf/sites-available/$container_name"
+
+${host_url} {
+  reverse_proxy ${proxy_url} {
+    header_up Host ${domain}
+    header_down Location "^https?://[^/]+:${http_port}(/|$)(.*)$" "${host_url}\$1\$2"
+  }
+  ${tls}
+}
+
+EOF
+
+  fi
+done
+
+exec docker exec -it -w /etc/caddy caddy /usr/bin/caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile

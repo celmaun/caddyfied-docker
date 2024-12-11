@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# vim:set ft=bash ts=4 sw=4 et :
+# shellcheck shell=bash
+# shellcheck disable=SC2317
+
+set -a
+
+orex() { "$@" || exit "$?$(printf >&2 '^ ERROR[%d]: %s\n' "$?" "$*")"; }
+oret() { "$@" || return "$?$(printf >&2 '^ ERROR[%d]: %s\n' "$?" "$*")"; }
+orinfo() { "$@" || return "$?$(printf >&2 '^ INFO[%d]: %s\n' "$?" "$*")"; }
+oklog() {
+  oret "$@" || return
+  printf >&2 'LOG: %s\n' "$*"
+}
+
+canon_file() { [ -n "$1" ] && [ -f "$1" ] && readlink -f -- "$1"; }
+canon_file_dir() { [ -n "$1" ] && [ -f "$1" ] && f="$(readlink -f -- "$1")" && printf '%s\n' "${f%/*}"; }
+canon_dir() { [ -n "$1" ] && [ -d "$1" ] && readlink -f -- "$1"; }
+canon_exe() { [ -n "$1" ] && [ -f "$1" ] && [ -x "$1" ] && readlink -f -- "$1"; }
+canon_zarg() { z="$(canon_file "${BASH_SOURCE:-"$0"}")" && case ${z##*/} in '' | '-'* | ??sh | ?sh | sh) false ;; esac && printf '%s\n' "$z"; }
+canon_zdir() {
+  p="$(canon_zarg)" && printf '%s\n' "${p%/*}" && return
+  pwd -P
+}
+
+orex cd "$(dirname "$(canon_zdir)")"
+
+exec docker exec -it -w /etc/caddy caddy /usr/bin/caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile

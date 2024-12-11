@@ -1,0 +1,44 @@
+name: caddy
+
+services:
+  caddy:
+    container_name: caddy
+    build:
+      context: .
+      dockerfile_inline: |
+        FROM caddy:2.9-builder-alpine AS builder
+        RUN xcaddy build --with github.com/caddy-dns/cloudflare
+        FROM caddy:2.9-alpine
+        COPY --from=builder /usr/bin/caddy /usr/bin/caddy
+
+    restart: unless-stopped
+    cap_add:
+      - NET_ADMIN
+
+    networks:
+      - caddy
+
+    volumes:
+      - $PWD/conf:/etc/caddy
+      - data:/data
+      - config:/config
+
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+      - "127.0.0.1:2019:2019"
+volumes:
+  data:
+  config:
+
+
+networks:
+  caddy:
+    name: caddy
+    driver: bridge
+    attachable: true
+    #internal: true # Only allow containers in this network to communicate with each other
+    ipam:
+      config:
+        - subnet: 192.168.240.0/24

@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+# vim:set ft=bash ts=4 sw=4 et :
+# shellcheck shell=bash
+# shellcheck disable=SC2317
+
+set -a
+
+orex() { "$@" || exit "$?$(printf >&2 '^ ERROR[%d]: %s\n' "$?" "$*")"; }
+oret() { "$@" || return "$?$(printf >&2 '^ ERROR[%d]: %s\n' "$?" "$*")"; }
+orinfo() { "$@" || return "$?$(printf >&2 '^ INFO[%d]: %s\n' "$?" "$*")"; }
+oklog() {
+  oret "$@" || return
+  printf >&2 'LOG: %s\n' "$*"
+}
+
+canon_file() { [ -n "$1" ] && [ -f "$1" ] && readlink -f -- "$1"; }
+canon_file_dir() { f="$(canon_file "$1")" && printf '%s\n' "${f%/*}"; }
+canon_dir() { [ -n "$1" ] && [ -d "$1" ] && readlink -f -- "$1"; }
+canon_exe() { [ -n "$1" ] && [ -f "$1" ] && [ -x "$1" ] && readlink -f -- "$1"; }
+canon_zarg() { z="$(canon_file "${BASH_SOURCE:-"$0"}")" && case ${z##*/} in '' | '-'* | ??sh | ?sh | sh) false ;; esac && printf '%s\n' "$z"; }
+canon_zdir() {
+  p="$(canon_zarg)" && printf '%s\n' "${p%/*}" && return
+  pwd -P
+}
+
+set +a
+
+site_name="${1:?site_name is required}" || exit
+
+orex cd "$(dirname "$(canon_zdir)")"
+
+export PATH="$PWD/bin:$PATH"
+
+orex cd conf
+
+orex mkdir -p sites-available
+orex mkdir -p sites-enabled
+
+for site_name; do
+  site_name="${site_name##*/}"
+  orex test -f "sites-available/${site_name}"
+  if [ -L "sites-enabled/${site_name}" ]; then
+    orex rm "sites-enabled/${site_name}"
+  fi
+done
+
+orex caddy-reload

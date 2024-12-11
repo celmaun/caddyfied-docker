@@ -1,0 +1,6 @@
+.DS_Store
+
+conf/sites-available/*
+!conf/sites-available/.gitkeep
+conf/sites-enabled/*
+!conf/sites-enabled/.gitkeep
